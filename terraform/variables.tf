@@ -13,12 +13,6 @@ variable "environment" {
   }
 }
 
-variable "project_name" {
-  description = "Project name for tagging and naming resources"
-  type        = string
-  default     = "car-repair-db"
-}
-
 variable "vpc_id" {
   description = "VPC ID where RDS will be deployed"
   type        = string
@@ -31,11 +25,6 @@ variable "private_subnet_ids" {
     condition     = length(var.private_subnet_ids) >= 2
     error_message = "At least 2 subnets are required for high availability."
   }
-}
-
-variable "eks_security_group_id" {
-  description = "Security group ID of EKS cluster for database access"
-  type        = string
 }
 
 variable "db_name" {
@@ -51,20 +40,20 @@ variable "db_username" {
   sensitive   = true
 }
 
-variable "db_password" {
-  description = "Database master password (will be stored in Secrets Manager)"
-  type        = string
-  sensitive   = true
-  validation {
-    condition     = length(var.db_password) >= 12
-    error_message = "Password must be at least 12 characters long."
-  }
+variable "allowed_security_groups" {
+  description = "Security groups allowed to connect to PostgreSQL"
+  type        = list(string)
+  default     = []
 }
 
 variable "db_instance_class" {
   description = "RDS instance class"
   type        = string
   default     = "db.t3.small"
+  validation {
+    condition     = can(regex("^db\\.[[:alnum:]-]+\\.[[:alnum:]-]+$", var.db_instance_class))
+    error_message = "db_instance_class must be a valid RDS instance class, such as db.t3.micro or db.t4g.small."
+  }
 }
 
 variable "db_allocated_storage" {
@@ -72,8 +61,8 @@ variable "db_allocated_storage" {
   type        = number
   default     = 20
   validation {
-    condition     = var.db_allocated_storage >= 20
-    error_message = "Allocated storage must be at least 20 GB."
+    condition     = var.db_allocated_storage >= 20 && var.db_allocated_storage <= 65536
+    error_message = "db_allocated_storage must be between 20 and 65536 GB."
   }
 }
 

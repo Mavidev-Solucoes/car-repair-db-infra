@@ -1,13 +1,13 @@
 # Security Group for RDS
 resource "aws_security_group" "rds" {
-  name_prefix = "${var.project_name}-rds-"
-  description = "Security group for ${var.project_name} RDS PostgreSQL database"
+  name        = "${local.resource_prefix}-rds-sg"
+  description = "Security group for ${local.resource_prefix} RDS PostgreSQL database"
   vpc_id      = var.vpc_id
 
   tags = merge(
-    var.tags,
+    local.common_tags,
     {
-      Name = "${var.project_name}-rds-sg"
+      Name = "${local.resource_prefix}-rds-sg"
     }
   )
 
@@ -16,15 +16,17 @@ resource "aws_security_group" "rds" {
   }
 }
 
-# Allow PostgreSQL traffic from EKS cluster
-resource "aws_security_group_rule" "rds_ingress_from_eks" {
+# Allow PostgreSQL traffic from approved application security groups
+resource "aws_security_group_rule" "rds_ingress_from_allowed_security_groups" {
+  for_each = toset(var.allowed_security_groups)
+
   type                     = "ingress"
   from_port                = 5432
   to_port                  = 5432
   protocol                 = "tcp"
-  source_security_group_id = var.eks_security_group_id
+  source_security_group_id = each.value
   security_group_id        = aws_security_group.rds.id
-  description              = "Allow PostgreSQL from EKS cluster"
+  description              = "Allow PostgreSQL from approved application security groups"
 }
 
 # Allow all outbound traffic
@@ -40,16 +42,14 @@ resource "aws_security_group_rule" "rds_egress" {
 
 # DB Subnet Group for RDS placement
 resource "aws_db_subnet_group" "default" {
-  name_prefix            = "${var.project_name}-db-subnet-"
-  description            = "Subnet group for ${var.project_name} RDS"
-  subnet_ids             = var.private_subnet_ids
-  skip_final_snapshot    = false
-  skip_final_snapshot_db = var.environment == "dev" ? true : false
+  name        = "${local.resource_prefix}-db-subnet-group"
+  description = "Subnet group for ${local.resource_prefix} RDS"
+  subnet_ids  = var.private_subnet_ids
 
   tags = merge(
-    var.tags,
+    local.common_tags,
     {
-      Name = "${var.project_name}-db-subnet-group"
+      Name = "${local.resource_prefix}-db-subnet-group"
     }
   )
 
@@ -60,7 +60,7 @@ resource "aws_db_subnet_group" "default" {
 
 # IAM Role for RDS Enhanced Monitoring
 resource "aws_iam_role" "rds_monitoring" {
-  name_prefix = "${var.project_name}-rds-monitoring-"
+  name = "${local.resource_prefix}-rds-monitoring"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -76,9 +76,9 @@ resource "aws_iam_role" "rds_monitoring" {
   })
 
   tags = merge(
-    var.tags,
+    local.common_tags,
     {
-      Name = "${var.project_name}-rds-monitoring-role"
+      Name = "${local.resource_prefix}-rds-monitoring-role"
     }
   )
 }

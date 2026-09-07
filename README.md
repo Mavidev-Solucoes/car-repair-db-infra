@@ -1,6 +1,6 @@
 # Car Repair Database Infrastructure
 
-Terraform configuration for provisioning Amazon RDS PostgreSQL 17 on AWS for a .NET application running on EKS.
+Terraform configuration for provisioning Amazon RDS PostgreSQL 17 on AWS following production-oriented best practices for the FIAP Tech Challenge, with decoupled network integration for EKS, Kong, Lambda and observability tooling such as New Relic.
 
 ## 📋 Project Overview
 
@@ -71,7 +71,7 @@ car-repair-db-infra/
 - AWS CLI configured with appropriate credentials
 - AWS Account with necessary permissions
 - Existing VPC with private subnets
-- EKS cluster already deployed
+- At least one application security group that should be allowed to reach PostgreSQL
 
 ### Setup Steps
 
@@ -118,8 +118,7 @@ vi environments/dev/terraform.tfvars
 Update the following variables:
 - `vpc_id`: Your VPC ID
 - `private_subnet_ids`: Your private subnet IDs
-- `eks_security_group_id`: Your EKS security group ID
-- `db_password`: Strong password for database
+- `allowed_security_groups`: Security groups from approved consumers (EKS, Kong, Lambda, bastion, etc.)
 
 **For Production:**
 
@@ -127,7 +126,7 @@ Update the following variables:
 vi environments/prod/terraform.tfvars
 ```
 
-Update the same variables with production values.
+Update the same variables with production values. The master password is generated automatically, stored in AWS Secrets Manager and consumed by RDS during provisioning.
 
 #### 4. Initialize Terraform
 
@@ -170,6 +169,11 @@ After successful deployment, Terraform outputs include:
 - `rds_port`: PostgreSQL port (5432)
 - `rds_database_name`: Initial database name
 - `rds_arn`: RDS instance ARN
+- `endpoint`: Simplified endpoint output
+- `port`: Simplified port output
+- `arn`: Simplified ARN output
+- `secret_arn`: Simplified secret ARN output
+- `security_group_id`: RDS security group ID
 - `secrets_manager_secret_arn`: Secrets Manager ARN
 - `secrets_manager_secret_name`: Secrets Manager secret name
 - `rds_connection_string`: Full connection string (sensitive)
@@ -178,8 +182,8 @@ After successful deployment, Terraform outputs include:
 
 - ✅ **Encryption at Rest**: EBS volumes encrypted
 - ✅ **Encryption in Transit**: SSL/TLS enabled
-- ✅ **Secrets Manager Integration**: Database credentials stored securely
-- ✅ **Security Group**: Restricted ingress from EKS only
+- ✅ **Secrets Manager Integration**: Database credentials generated automatically and stored securely
+- ✅ **Security Group**: Restricted ingress from approved security groups only
 - ✅ **Multi-AZ Deployment** (Prod): High availability
 - ✅ **IAM Database Authentication**: Optional IAM-based access
 - ✅ **Automated Backups**: 7-day retention (configurable)
@@ -206,9 +210,9 @@ After successful deployment, Terraform outputs include:
 
 ## 📝 PostgreSQL Configuration
 
-- **Version**: PostgreSQL 17.1
+- **Version**: PostgreSQL 17
 - **Parameter Group**: Optimized for .NET applications
-- **Logging**: All statements logged, queries >1000ms logged
+- **Logging**: DDL statements logged, queries >1000ms logged
 - **Max Connections**: 200 (dev), 500 (prod)
 - **Performance Tuning**: Shared preload libraries, work_mem, maintenance_work_mem
 
@@ -251,8 +255,8 @@ aws secretsmanager get-secret-value \
 
 ## 🚨 Important Notes
 
-1. **Database Password**: Change default passwords in `terraform.tfvars` before deployment
-2. **Network Access**: Ensure EKS cluster security group is properly identified
+1. **Database Password**: Terraform generates the master password and writes it to Secrets Manager automatically
+2. **Network Access**: Populate `allowed_security_groups` with every approved client security group
 3. **State File Security**: Terraform state contains sensitive data. Keep S3 bucket encrypted and versioned
 4. **Backup Testing**: Regularly test database restoration from backups
 5. **Monitoring**: Set up CloudWatch alarms for CPU, memory, and storage
