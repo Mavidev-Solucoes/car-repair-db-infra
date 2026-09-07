@@ -1,26 +1,22 @@
 # RDS PostgreSQL Instance
 resource "aws_db_instance" "postgresql" {
-  identifier_prefix = "${var.project_name}-pg-"
+  identifier = "${local.resource_prefix}-postgresql"
 
   # Database Engine
-  engine               = "postgres"
-  engine_version       = "17.1"
-  family               = "postgres17"
-  major_engine_version = "17"
+  engine         = "postgres"
+  engine_version = local.db_engine_version
 
   # Instance Configuration
-  instance_class       = var.db_instance_class
-  allocated_storage    = var.db_allocated_storage
+  instance_class        = var.db_instance_class
+  allocated_storage     = var.db_allocated_storage
   max_allocated_storage = var.db_max_allocated_storage
-  storage_type         = "gp3"
-  storage_encrypted    = true
-  iops                 = 3000
-  storage_throughput   = 125
+  storage_type          = "gp3"
+  storage_encrypted     = true
 
   # Database Configuration
   db_name  = var.db_name
   username = var.db_username
-  password = var.db_password
+  password = random_password.db_password.result
 
   # Network Configuration
   db_subnet_group_name   = aws_db_subnet_group.default.name
@@ -29,22 +25,21 @@ resource "aws_db_instance" "postgresql" {
   multi_az               = var.environment == "prod" ? true : false
 
   # Backup Configuration
-  backup_retention_period = var.backup_retention_days
-  backup_window           = var.backup_window
-  copy_tags_to_snapshot   = true
-  skip_final_snapshot     = var.environment == "dev" ? true : false
-  final_snapshot_identifier = var.environment == "prod" ? "${var.project_name}-pg-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
+  backup_retention_period   = var.backup_retention_days
+  backup_window             = var.backup_window
+  copy_tags_to_snapshot     = true
+  skip_final_snapshot       = var.environment == "dev"
+  final_snapshot_identifier = var.environment == "prod" ? "${local.resource_prefix}-pg-final-snapshot" : null
 
   # Maintenance
-  maintenance_window           = var.maintenance_window
-  auto_minor_version_upgrade   = true
-  deletion_protection          = var.environment == "prod" ? true : false
-  skip_final_snapshot          = var.environment == "dev" ? true : false
+  maintenance_window         = var.maintenance_window
+  auto_minor_version_upgrade = true
+  deletion_protection        = var.environment == "prod"
 
   # Monitoring
   enabled_cloudwatch_logs_exports = ["postgresql"]
-  monitoring_interval              = var.enable_monitoring ? var.monitoring_interval : 0
-  monitoring_role_arn              = var.enable_monitoring ? aws_iam_role.rds_monitoring.arn : null
+  monitoring_interval             = var.enable_monitoring ? var.monitoring_interval : 0
+  monitoring_role_arn             = var.enable_monitoring ? aws_iam_role.rds_monitoring.arn : null
 
   # Performance Insights
   performance_insights_enabled          = var.enable_performance_insights
@@ -55,15 +50,13 @@ resource "aws_db_instance" "postgresql" {
 
   # Other
   iam_database_authentication_enabled = true
-  enable_iam_database_authentication  = true
-  enable_http_endpoint                = false
   allow_major_version_upgrade         = false
-  apply_immediately                   = var.environment == "dev" ? true : false
+  apply_immediately                   = var.environment == "dev"
 
   tags = merge(
-    var.tags,
+    local.common_tags,
     {
-      Name = "${var.project_name}-postgresql-${var.environment}"
+      Name = "${local.resource_prefix}-postgresql"
     }
   )
 
@@ -76,14 +69,14 @@ resource "aws_db_instance" "postgresql" {
 
 # RDS Parameter Group for PostgreSQL 17
 resource "aws_db_parameter_group" "postgresql" {
-  name_prefix = "${var.project_name}-pg17-"
-  family      = "postgres17"
-  description = "Parameter group for ${var.project_name} PostgreSQL 17"
+  name        = "${local.resource_prefix}-pg17"
+  family      = local.db_parameter_group_family
+  description = "Parameter group for ${local.resource_prefix} PostgreSQL ${local.db_engine_version}"
 
   # Performance tuning for .NET applications
   parameter {
     name  = "log_statement"
-    value = "all"
+    value = "ddl"
   }
 
   parameter {
@@ -112,16 +105,16 @@ resource "aws_db_parameter_group" "postgresql" {
   }
 
   tags = merge(
-    var.tags,
+    local.common_tags,
     {
-      Name = "${var.project_name}-pg-parameter-group"
+      Name = "${local.resource_prefix}-pg-parameter-group"
     }
   )
 }
 
 # RDS Cluster Event Subscription (optional)
 resource "aws_db_event_subscription" "rds_events" {
-  name      = "${var.project_name}-rds-events"
+  name      = "${local.resource_prefix}-rds-events"
   sns_topic = aws_sns_topic.rds_alerts.arn
 
   source_type = "db-instance"
@@ -140,34 +133,34 @@ resource "aws_db_event_subscription" "rds_events" {
   ]
 
   tags = merge(
-    var.tags,
+    local.common_tags,
     {
-      Name = "${var.project_name}-rds-events"
+      Name = "${local.resource_prefix}-rds-events"
     }
   )
 }
 
 # SNS Topic for RDS Alerts
 resource "aws_sns_topic" "rds_alerts" {
-  name_prefix = "${var.project_name}-rds-alerts-"
+  name = "${local.resource_prefix}-rds-alerts"
 
   tags = merge(
-    var.tags,
+    local.common_tags,
     {
-      Name = "${var.project_name}-rds-alerts"
+      Name = "${local.resource_prefix}-rds-alerts"
     }
   )
 }
 
 # Enhanced Monitoring log group
 resource "aws_cloudwatch_log_group" "rds_enhanced_monitoring" {
-  name_prefix       = "/aws/rds/enhanced-monitoring/${var.project_name}-"
+  name              = "/aws/rds/enhanced-monitoring/${local.resource_prefix}"
   retention_in_days = var.environment == "prod" ? 30 : 7
 
   tags = merge(
-    var.tags,
+    local.common_tags,
     {
-      Name = "${var.project_name}-rds-enhanced-monitoring"
+      Name = "${local.resource_prefix}-rds-enhanced-monitoring"
     }
   )
 }

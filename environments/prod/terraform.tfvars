@@ -2,7 +2,6 @@
 
 aws_region  = "us-east-1"
 environment = "prod"
-project_name = "car-repair-db"
 
 # VPC and Network Configuration
 vpc_id = "vpc-yyyyyyyyy"  # Replace with your prod VPC ID
@@ -10,12 +9,13 @@ private_subnet_ids = [
   "subnet-zzzzzzzzz",  # Replace with your first private subnet
   "subnet-wwwwwwwww"   # Replace with your second private subnet
 ]
-eks_security_group_id = "sg-yyyyyyyyy"  # Replace with your EKS security group
+allowed_security_groups = [
+  "sg-yyyyyyyyy"  # Replace with each application security group allowed to access PostgreSQL
+]
 
 # Database Configuration
 db_name     = "carrepairdb_prod"
 db_username = "postgres"
-db_password = "ChangeMe@ProdPassword123!Secure"  # MUST be changed - use very strong password
 
 # Instance Configuration (larger for production)
 db_instance_class      = "db.t3.small"  # Minimum recommended for production
@@ -34,9 +34,7 @@ enable_performance_insights  = true
 
 # Tags
 tags = {
-  Environment = "prod"
   Team        = "Platform"
   CostCenter  = "Production"
-  ManagedBy   = "Terraform"
   Compliance  = "Required"
 }
