@@ -14,9 +14,10 @@ terraform {
 
   backend "s3" {
     # Backend será configurado via backend-config durante init
-    # bucket = "seu-bucket-terraform"
-    # key    = "car-repair-db-infra/terraform.tfstate"
-    # region = "us-east-1"
-    # encrypt = true
+    # bucket       = "car-repair-k8s-infra-terraform-state"
+    # key          = "car-repair-db-infra/<environment>/terraform.tfstate"
+    # region       = "us-east-1"
+    # encrypt      = true
+    # use_lockfile = true
   }
 }

@@ -27,6 +27,11 @@ variable "private_subnet_ids" {
   }
 }
 
+variable "eks_node_security_group_id" {
+  description = "Security group ID used by the EKS worker nodes that are allowed to connect to PostgreSQL."
+  type        = string
+}
+
 variable "db_name" {
   description = "Initial database name"
   type        = string
@@ -38,12 +43,6 @@ variable "db_username" {
   type        = string
   default     = "postgres"
   sensitive   = true
-}
-
-variable "allowed_security_groups" {
-  description = "Security groups allowed to connect to PostgreSQL"
-  type        = list(string)
-  default     = []
 }
 
 variable "db_instance_class" {
@@ -79,6 +78,10 @@ variable "backup_retention_days" {
   validation {
     condition     = var.backup_retention_days >= 1 && var.backup_retention_days <= 35
     error_message = "Backup retention must be between 1 and 35 days."
+  }
+  validation {
+    condition     = var.environment != "prod" || var.backup_retention_days >= 7
+    error_message = "Production backup retention must be at least 7 days."
   }
 }
 

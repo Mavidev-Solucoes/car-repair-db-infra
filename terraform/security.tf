@@ -16,28 +16,55 @@ resource "aws_security_group" "rds" {
   }
 }
 
-# Allow PostgreSQL traffic from approved application security groups
-resource "aws_security_group_rule" "rds_ingress_from_allowed_security_groups" {
-  for_each = toset(var.allowed_security_groups)
+# Security Group reused by serverless database clients, such as the future auth Lambda.
+resource "aws_security_group" "database_client" {
+  name        = "${local.resource_prefix}-database-client-sg"
+  description = "Reusable client security group for ${local.resource_prefix} database access"
+  vpc_id      = var.vpc_id
 
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${local.resource_prefix}-database-client-sg"
+    }
+  )
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Allow PostgreSQL traffic from EKS worker nodes.
+resource "aws_security_group_rule" "rds_ingress_from_eks_nodes" {
   type                     = "ingress"
   from_port                = 5432
   to_port                  = 5432
   protocol                 = "tcp"
-  source_security_group_id = each.value
+  source_security_group_id = var.eks_node_security_group_id
   security_group_id        = aws_security_group.rds.id
-  description              = "Allow PostgreSQL from approved application security groups"
+  description              = "Allow PostgreSQL from EKS worker nodes"
 }
 
-# Allow all outbound traffic
-resource "aws_security_group_rule" "rds_egress" {
-  type              = "egress"
-  from_port         = 0
-  to_port           = 0
-  protocol          = "-1"
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_security_group.rds.id
-  description       = "Allow all outbound traffic"
+# Allow PostgreSQL traffic from the reusable serverless client identity.
+resource "aws_security_group_rule" "rds_ingress_from_database_client" {
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.database_client.id
+  security_group_id        = aws_security_group.rds.id
+  description              = "Allow PostgreSQL from database client security group"
+}
+
+# Allow future serverless clients using the reusable SG to initiate PostgreSQL connections.
+resource "aws_security_group_rule" "database_client_egress_to_rds" {
+  type                     = "egress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.rds.id
+  security_group_id        = aws_security_group.database_client.id
+  description              = "Allow PostgreSQL egress to RDS security group"
 }
 
 # DB Subnet Group for RDS placement
