@@ -29,14 +29,21 @@ Esta stack não cria:
 ## Arquitetura
 
 ```text
-EKS
- |
- | node_security_group_id
- v
-RDS Security Group
- |
- v
-RDS PostgreSQL privado :5432
+car-repair-k8s-infra
+  |
+  +-- VPC
+  +-- Private Subnets
+  +-- EKS
+       |
+       | eks_node_security_group_id
+       v
+  RDS Security Group
+       |
+       v
+  RDS PostgreSQL privado :5432
+       |
+       v
+  AWS Secrets Manager
 ```
 
 Futuro acesso serverless:
@@ -144,6 +151,7 @@ car-repair-k8s-infra-terraform-state
 Keys:
 
 - dev: `car-repair-db-infra/dev/terraform.tfstate`
+- hml: `car-repair-db-infra/hml/terraform.tfstate`
 - prod: `car-repair-db-infra/prod/terraform.tfstate`
 
 Configurado com:
@@ -161,6 +169,12 @@ Configurado com:
 - Performance Insights desabilitado por padrão
 - final snapshot desabilitado
 
+### Hml
+
+- Configuração intermediária para homologação
+- Pode reutilizar sizing reduzido conforme necessidade
+- final snapshot pode ser desabilitado conforme política do ambiente
+
 ### Prod
 
 - Multi-AZ
@@ -170,6 +184,34 @@ Configurado com:
 - Performance Insights habilitado por padrão
 
 ## Como executar
+
+### Pré-requisitos
+
+Antes do deploy, garanta que:
+
+- o `car-repair-k8s-infra` já foi aplicado no ambiente
+- os outputs `vpc_id`, `private_subnet_ids` e `eks_node_security_group_id` estão disponíveis
+- o bucket S3 do backend Terraform já existe
+- suas credenciais AWS estão configuradas
+- o arquivo `terraform.tfvars` foi criado a partir do exemplo do ambiente
+
+Exemplo para dev:
+
+```bash
+cp environments/dev/terraform.tfvars.example environments/dev/terraform.tfvars
+```
+
+Exemplo para hml:
+
+```bash
+cp environments/hml/terraform.tfvars.example environments/hml/terraform.tfvars
+```
+
+Exemplo para prod:
+
+```bash
+cp environments/prod/terraform.tfvars.example environments/prod/terraform.tfvars
+```
 
 Inicializar dev:
 
@@ -183,6 +225,30 @@ Planejar dev:
 terraform -chdir=terraform plan -var-file=../environments/dev/terraform.tfvars
 ```
 
+Aplicar dev:
+
+```bash
+terraform -chdir=terraform apply -var-file=../environments/dev/terraform.tfvars
+```
+
+Inicializar hml:
+
+```bash
+terraform -chdir=terraform init -backend-config=../environments/hml/backend.tfvars
+```
+
+Planejar hml:
+
+```bash
+terraform -chdir=terraform plan -var-file=../environments/hml/terraform.tfvars
+```
+
+Aplicar hml:
+
+```bash
+terraform -chdir=terraform apply -var-file=../environments/hml/terraform.tfvars
+```
+
 Inicializar prod:
 
 ```bash
@@ -193,6 +259,34 @@ Planejar prod:
 
 ```bash
 terraform -chdir=terraform plan -var-file=../environments/prod/terraform.tfvars
+```
+
+Aplicar prod:
+
+```bash
+terraform -chdir=terraform apply -var-file=../environments/prod/terraform.tfvars
+```
+
+## Destroy
+
+> Atenção: o destroy remove a infraestrutura do banco. Em produção, valide snapshots, retenção de backup e impacto na aplicação antes de executar.
+
+Destroy dev:
+
+```bash
+terraform -chdir=terraform destroy -var-file=../environments/dev/terraform.tfvars
+```
+
+Destroy hml:
+
+```bash
+terraform -chdir=terraform destroy -var-file=../environments/hml/terraform.tfvars
+```
+
+Destroy prod:
+
+```bash
+terraform -chdir=terraform destroy -var-file=../environments/prod/terraform.tfvars
 ```
 
 ## Outputs
@@ -227,3 +321,30 @@ Use `car-repair/prod/database` para produção.
 - Preencher `vpc_id`, `private_subnet_ids` e `eks_node_security_group_id` com outputs reais do ambiente.
 - O bucket S3 do backend deve existir antes do `terraform init`.
 - A futura Lambda Auth deve reutilizar o output `database_client_security_group_id`.
+
+## Separação entre banco e aplicação
+
+Este repositório provisiona exclusivamente a infraestrutura de banco de dados:
+
+- Amazon RDS PostgreSQL
+- DB Subnet Group
+- Security Groups de acesso ao banco
+- AWS Secrets Manager para credenciais
+- logs, monitoramento e alertas operacionais do RDS
+
+Este repositório não provisiona a aplicação nem a infraestrutura de execução da aplicação. Os recursos abaixo pertencem ao repositório `car-repair-k8s-infra`:
+
+- VPC
+- subnets privadas
+- Amazon EKS
+- node security group
+- componentes Kubernetes e serviços da aplicação
+
+## Relacionamento com os demais repositórios
+
+| Repositório | Responsabilidade |
+|------------|------------------|
+| car-repair-app | API principal |
+| car-repair-auth-lambda | Emissão de JWT |
+| car-repair-db-infra | Banco PostgreSQL |
+| car-repair-k8s-infra | Plataforma Kubernetes |
