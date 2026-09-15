@@ -1,0 +1,81 @@
+name: CD - PostgreSQL RDS
+
+on:
+  push:
+    branches: [hml, prod]
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Ambiente de destino
+        required: true
+        type: choice
+        options:
+          - hml
+          - prod
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: database-${{ github.event_name == 'workflow_dispatch' && inputs.environment || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy PostgreSQL
+    runs-on: ubuntu-latest
+
+    environment:
+      name: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || github.ref_name }}
+
+    env:
+      TARGET_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || github.ref_name }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      TF_VAR_environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || github.ref_name }}
+      TF_VAR_vpc_id: ${{ vars.VPC_ID }}
+      TF_VAR_private_subnet_ids: ${{ vars.PRIVATE_SUBNET_IDS_JSON }}
+      TF_VAR_eks_node_security_group_id: ${{ vars.EKS_NODE_SECURITY_GROUP_ID }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate target
+        shell: bash
+        run: |
+          test "${TARGET_ENV}" = "hml" || test "${TARGET_ENV}" = "prod"
+          test -f "environments/${TARGET_ENV}/backend.tfvars"
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: |
+          terraform init \
+            -input=false \
+            -backend-config="../environments/${TARGET_ENV}/backend.tfvars"
+
+      - name: Terraform Plan
+        working-directory: terraform
+        run: |
+          terraform plan \
+            -input=false \
+            -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: terraform
+        run: |
+          terraform apply \
+            -input=false \
+            -auto-approve \
+            tfplan
