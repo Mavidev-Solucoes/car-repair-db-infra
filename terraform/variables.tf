@@ -8,8 +8,8 @@ variable "environment" {
   description = "Environment name (dev, prod, etc)"
   type        = string
   validation {
-    condition     = contains(["dev", "prod"], var.environment)
-    error_message = "Environment must be 'dev' or 'prod'."
+    condition     = contains(["dev", "hml", "prod"], var.environment)
+    error_message = "Environment must be dev, hml, or prod."
   }
 }
 

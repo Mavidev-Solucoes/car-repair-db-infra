@@ -1,0 +1,31 @@
+aws_region  = "us-east-1"
+environment = "hml"
+
+vpc_id = "vpc-xxxxxxxxxxxxxxxxx"
+
+private_subnet_ids = [
+  "subnet-xxxxxxxxxxxxxxxxx",
+  "subnet-yyyyyyyyyyyyyyyyy"
+]
+
+eks_node_security_group_id = "sg-xxxxxxxxxxxxxxxxx"
+
+db_name     = "carrepairdb_hml"
+db_username = "postgres"
+
+db_instance_class        = "db.t3.micro"
+db_allocated_storage     = 20
+db_max_allocated_storage = 50
+
+backup_retention_days = 7
+backup_window         = "03:00-04:00"
+maintenance_window    = "sun:04:00-sun:05:00"
+
+enable_monitoring           = false
+monitoring_interval         = 0
+enable_performance_insights = false
+
+tags = {
+  Team       = "Platform"
+  CostCenter = "Engineering"
+}
