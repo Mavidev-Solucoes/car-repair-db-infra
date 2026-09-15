@@ -40,7 +40,7 @@ resource "aws_db_instance" "postgresql" {
   # Monitoring
   enabled_cloudwatch_logs_exports = ["postgresql"]
   monitoring_interval             = var.enable_monitoring ? var.monitoring_interval : 0
-  monitoring_role_arn             = var.enable_monitoring ? aws_iam_role.rds_monitoring.arn : null
+  monitoring_role_arn             = var.enable_monitoring ? aws_iam_role.rds_monitoring[0].arn : null
 
   # Performance Insights
   performance_insights_enabled          = var.enable_performance_insights
@@ -74,7 +74,6 @@ resource "aws_db_parameter_group" "postgresql" {
   family      = local.db_parameter_group_family
   description = "Parameter group for ${local.resource_prefix} PostgreSQL ${local.db_engine_version}"
 
-  # Performance tuning for .NET applications
   parameter {
     name  = "log_statement"
     value = "ddl"
@@ -85,14 +84,18 @@ resource "aws_db_parameter_group" "postgresql" {
     value = "1000"
   }
 
+  # Static parameter: requires DB reboot
   parameter {
-    name  = "shared_preload_libraries"
-    value = "pg_stat_statements"
+    name         = "shared_preload_libraries"
+    value        = "pg_stat_statements"
+    apply_method = "pending-reboot"
   }
 
+  # Static parameter: requires DB reboot
   parameter {
-    name  = "max_connections"
-    value = var.environment == "prod" ? "500" : "200"
+    name         = "max_connections"
+    value        = var.environment == "prod" ? "500" : "200"
+    apply_method = "pending-reboot"
   }
 
   parameter {
@@ -113,7 +116,7 @@ resource "aws_db_parameter_group" "postgresql" {
   )
 }
 
-# RDS Cluster Event Subscription (optional)
+# RDS Event Subscription
 resource "aws_db_event_subscription" "rds_events" {
   name      = "${local.resource_prefix}-rds-events"
   sns_topic = aws_sns_topic.rds_alerts.arn
@@ -125,9 +128,11 @@ resource "aws_db_event_subscription" "rds_events" {
     "availability",
     "backup",
     "configuration change",
-    "database instance",
+    "creation",
+    "deletion",
     "failover",
     "failure",
+    "low storage",
     "maintenance",
     "notification",
     "recovery"
@@ -153,7 +158,9 @@ resource "aws_sns_topic" "rds_alerts" {
   )
 }
 
-# Enhanced Monitoring log group
+# Enhanced Monitoring log group.
+# In AWS Academy Enhanced Monitoring is disabled, therefore
+# no dedicated IAM role is required.
 resource "aws_cloudwatch_log_group" "rds_enhanced_monitoring" {
   name              = "/aws/rds/enhanced-monitoring/${local.resource_prefix}"
   retention_in_days = var.environment == "prod" ? 30 : 7

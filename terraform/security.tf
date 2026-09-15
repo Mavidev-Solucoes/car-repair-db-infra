@@ -16,7 +16,7 @@ resource "aws_security_group" "rds" {
   }
 }
 
-# Security Group reused by serverless database clients, such as the future auth Lambda.
+# Security Group reused by serverless database clients, such as the auth Lambda.
 resource "aws_security_group" "database_client" {
   name        = "${local.resource_prefix}-database-client-sg"
   description = "Reusable client security group for ${local.resource_prefix} database access"
@@ -56,7 +56,7 @@ resource "aws_security_group_rule" "rds_ingress_from_database_client" {
   description              = "Allow PostgreSQL from database client security group"
 }
 
-# Allow future serverless clients using the reusable SG to initiate PostgreSQL connections.
+# Allow serverless clients using the reusable SG to initiate PostgreSQL connections.
 resource "aws_security_group_rule" "database_client_egress_to_rds" {
   type                     = "egress"
   from_port                = 5432
@@ -67,7 +67,7 @@ resource "aws_security_group_rule" "database_client_egress_to_rds" {
   description              = "Allow PostgreSQL egress to RDS security group"
 }
 
-# DB Subnet Group for RDS placement
+# DB Subnet Group for RDS placement.
 resource "aws_db_subnet_group" "default" {
   name        = "${local.resource_prefix}-db-subnet-group"
   description = "Subnet group for ${local.resource_prefix} RDS"
@@ -85,8 +85,11 @@ resource "aws_db_subnet_group" "default" {
   }
 }
 
-# IAM Role for RDS Enhanced Monitoring
+# IAM Role used only when RDS Enhanced Monitoring is enabled.
+# AWS Academy dev disables Enhanced Monitoring, so no IAM role is created there.
 resource "aws_iam_role" "rds_monitoring" {
+  count = var.enable_monitoring ? 1 : 0
+
   name = "${local.resource_prefix}-rds-monitoring"
 
   assume_role_policy = jsonencode({
@@ -110,8 +113,10 @@ resource "aws_iam_role" "rds_monitoring" {
   )
 }
 
-# Attach RDS Monitoring Policy
+# Attach the AWS managed RDS Enhanced Monitoring policy only when enabled.
 resource "aws_iam_role_policy_attachment" "rds_monitoring" {
-  role       = aws_iam_role.rds_monitoring.name
+  count = var.enable_monitoring ? 1 : 0
+
+  role       = aws_iam_role.rds_monitoring[0].name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
 }
