@@ -29,34 +29,39 @@ Esta stack não cria:
 ## Arquitetura
 
 ```text
-car-repair-k8s-infra
+Terraform
   |
-  +-- VPC
-  +-- Private Subnets
-  +-- EKS
-       |
-       | eks_node_security_group_id
-       v
-  RDS Security Group
-       |
-       v
-  RDS PostgreSQL privado :5432
-       |
-       v
-  AWS Secrets Manager
+  +-- RDS PostgreSQL privado :5432
+  +-- RDS Security Group
+  +-- Database Client Security Group
+  `-- Secrets Manager: car-repair/<environment>/database
+
+car-repair-app em EKS
+  |
+  | via eks_node_security_group_id
+  v
+RDS Security Group
+  |
+  v
+RDS PostgreSQL privado :5432
 ```
 
-Futuro acesso serverless:
+Acesso serverless:
 
 ```text
-Lambda
+car-repair-auth-lambda
  |
- | database_client_security_group
+ | via database_client_security_group_id
  v
 RDS Security Group
  |
  v
 RDS PostgreSQL privado :5432
+
+car-repair-auth-lambda / External Secrets Operator
+ |
+ v
+Secrets Manager: car-repair/<environment>/database
 ```
 
 O RDS permite PostgreSQL `5432/tcp` somente a partir de:
@@ -103,7 +108,10 @@ O Security Group do RDS recebe somente:
 - ingress `5432/tcp` a partir do SG dos nodes EKS
 - ingress `5432/tcp` a partir do `database_client_security_group`
 
-O `database_client_security_group` e uma identidade de rede reutilizavel para clientes como a futura Lambda Auth. Ele nao possui ingress. O egress e restrito ao Security Group do RDS na porta `5432/tcp`.
+O `database_client_security_group` e uma identidade de rede reutilizavel para clientes como o `car-repair-auth-lambda`. Ele nao possui ingress. O egress permite:
+
+- PostgreSQL `5432/tcp` para o Security Group do RDS.
+- HTTPS `443/tcp` para chamadas a AWS APIs, como AWS Secrets Manager, via NAT Gateway ou futuramente via VPC Endpoint.
 
 ## Secrets Manager
 
@@ -302,6 +310,21 @@ Outputs mantidos para integração:
 - `database_secret_name`
 
 Nenhum output revela senha ou connection string completa.
+
+## Deploy automatizado
+
+O workflow `.github/workflows/cd.yml` executa Terraform para `hml` e `prod`.
+
+Configure as variaveis GitHub:
+
+- `AWS_REGION`
+- `VPC_ID`
+- `PRIVATE_SUBNET_IDS_JSON`
+- `EKS_NODE_SECURITY_GROUP_ID`
+
+Configure o secret GitHub:
+
+- `AWS_ROLE_TO_ASSUME`
 
 ## Recuperando credenciais
 
