@@ -1,4 +1,7 @@
-# Security Group for RDS
+# -------------------------------------------------------------------
+# RDS Security Group
+# -------------------------------------------------------------------
+
 resource "aws_security_group" "rds" {
   name        = "${local.resource_prefix}-rds-sg"
   description = "Security group for ${local.resource_prefix} RDS PostgreSQL database"
@@ -10,13 +13,15 @@ resource "aws_security_group" "rds" {
       Name = "${local.resource_prefix}-rds-sg"
     }
   )
-
-  lifecycle {
-    create_before_destroy = true
-  }
 }
 
-# Security Group reused by serverless database clients, such as the auth Lambda.
+# -------------------------------------------------------------------
+# Database Client Security Group
+#
+# Reusable by workloads that need PostgreSQL access, including the
+# authentication Lambda.
+# -------------------------------------------------------------------
+
 resource "aws_security_group" "database_client" {
   name        = "${local.resource_prefix}-database-client-sg"
   description = "Reusable client security group for ${local.resource_prefix} database access"
@@ -28,46 +33,80 @@ resource "aws_security_group" "database_client" {
       Name = "${local.resource_prefix}-database-client-sg"
     }
   )
-
-  lifecycle {
-    create_before_destroy = true
-  }
 }
 
-# Allow PostgreSQL traffic from EKS worker nodes.
+# -------------------------------------------------------------------
+# RDS Ingress
+# -------------------------------------------------------------------
+
 resource "aws_security_group_rule" "rds_ingress_from_eks_nodes" {
-  type                     = "ingress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
+  type = "ingress"
+
+  from_port = 5432
+  to_port   = 5432
+  protocol  = "tcp"
+
+  security_group_id        = aws_security_group.rds.id
   source_security_group_id = var.eks_node_security_group_id
-  security_group_id        = aws_security_group.rds.id
-  description              = "Allow PostgreSQL from EKS worker nodes"
+
+  description = "Allow PostgreSQL from EKS worker nodes"
 }
 
-# Allow PostgreSQL traffic from the reusable serverless client identity.
 resource "aws_security_group_rule" "rds_ingress_from_database_client" {
-  type                     = "ingress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.database_client.id
+  type = "ingress"
+
+  from_port = 5432
+  to_port   = 5432
+  protocol  = "tcp"
+
   security_group_id        = aws_security_group.rds.id
-  description              = "Allow PostgreSQL from database client security group"
+  source_security_group_id = aws_security_group.database_client.id
+
+  description = "Allow PostgreSQL from database client security group"
 }
 
-# Allow serverless clients using the reusable SG to initiate PostgreSQL connections.
+# -------------------------------------------------------------------
+# Database Client Egress
+# -------------------------------------------------------------------
+
+# PostgreSQL access is restricted specifically to the RDS SG.
 resource "aws_security_group_rule" "database_client_egress_to_rds" {
-  type                     = "egress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.rds.id
+  type = "egress"
+
+  from_port = 5432
+  to_port   = 5432
+  protocol  = "tcp"
+
   security_group_id        = aws_security_group.database_client.id
-  description              = "Allow PostgreSQL egress to RDS security group"
+  source_security_group_id = aws_security_group.rds.id
+
+  description = "Allow PostgreSQL egress to RDS security group"
 }
 
-# DB Subnet Group for RDS placement.
+# Lambda needs HTTPS access to AWS APIs such as Secrets Manager.
+#
+# In AWS Academy the private subnets reach those public AWS endpoints
+# through the NAT Gateway.
+#
+# A production environment can later replace this path with VPC
+# Interface Endpoints for tighter network isolation.
+resource "aws_security_group_rule" "database_client_https_egress" {
+  type = "egress"
+
+  from_port = 443
+  to_port   = 443
+  protocol  = "tcp"
+
+  security_group_id = aws_security_group.database_client.id
+  cidr_blocks       = ["0.0.0.0/0"]
+
+  description = "Allow HTTPS access to AWS service APIs through NAT"
+}
+
+# -------------------------------------------------------------------
+# RDS Subnet Group
+# -------------------------------------------------------------------
+
 resource "aws_db_subnet_group" "default" {
   name        = "${local.resource_prefix}-db-subnet-group"
   description = "Subnet group for ${local.resource_prefix} RDS"
@@ -79,28 +118,31 @@ resource "aws_db_subnet_group" "default" {
       Name = "${local.resource_prefix}-db-subnet-group"
     }
   )
-
-  lifecycle {
-    create_before_destroy = true
-  }
 }
 
-# IAM Role used only when RDS Enhanced Monitoring is enabled.
-# AWS Academy dev disables Enhanced Monitoring, so no IAM role is created there.
+# -------------------------------------------------------------------
+# RDS Enhanced Monitoring IAM Role
+#
+# Disabled in AWS Academy because IAM role creation is restricted.
+# -------------------------------------------------------------------
+
 resource "aws_iam_role" "rds_monitoring" {
   count = var.enable_monitoring ? 1 : 0
 
-  name = "${local.resource_prefix}-rds-monitoring"
+  name = "${local.resource_prefix}-rds-monitoring-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
+
     Statement = [
       {
-        Action = "sts:AssumeRole"
         Effect = "Allow"
+
         Principal = {
           Service = "monitoring.rds.amazonaws.com"
         }
+
+        Action = "sts:AssumeRole"
       }
     ]
   })
@@ -113,7 +155,6 @@ resource "aws_iam_role" "rds_monitoring" {
   )
 }
 
-# Attach the AWS managed RDS Enhanced Monitoring policy only when enabled.
 resource "aws_iam_role_policy_attachment" "rds_monitoring" {
   count = var.enable_monitoring ? 1 : 0
 

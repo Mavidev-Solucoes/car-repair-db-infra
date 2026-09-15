@@ -57,3 +57,5 @@ desktop.ini
 *.bak
 *.backup
 *.tmp
+tfplan
+.terraform/
